@@ -1,6 +1,6 @@
 # 5minBets
 
-`5minBets` is a Cardano-native price prediction market concept written in [Aiken](https://aiken-lang.org). Users bet `UP` or `DOWN` on the `XAU/USD` (gold) price over fixed 5-minute rounds, using [Pyth Network](https://pyth.network) price data to determine the outcome.
+`5minBets` is a Cardano-native price prediction market written in [Aiken](https://aiken-lang.org). Users bet `UP` or `DOWN` on whether the **gold price in US dollars** (`XAU/USD`) will rise or fall over a fixed 5-minute window, using [Pyth Lazer](https://pyth.network) price data (feed ID `6`) to determine the outcome.
 
 ## Status
 
@@ -16,6 +16,50 @@ Each market round follows a simple lifecycle:
 4. The contract determines the winning side and enables winners to claim their proportional share of the pool.
 5. A 2% protocol fee is deducted before payouts.
 
+### Round lifecycle
+
+```mermaid
+sequenceDiagram
+    actor Relayer
+    actor User A
+    actor User B
+    participant Contract
+    participant Pyth
+
+    Relayer->>Pyth: Fetch XAU/USD opening price
+    Relayer->>Contract: Create round UTxO (open_price, deadline)
+
+    User A->>Contract: PlaceBet(UP, 100 ADA)
+    User B->>Contract: PlaceBet(DOWN, 50 ADA)
+
+    Note over Contract: 5-minute window closes
+
+    Relayer->>Pyth: Fetch XAU/USD closing price
+    Relayer->>Contract: Settle(close_price)
+    Note over Contract: status → Settled(UP)
+
+    User A->>Contract: Claim
+    Contract-->>User A: ~145.5 ADA (gross 150 − 2% fee)
+
+    Relayer->>Contract: CollectFee (future)
+```
+
+### Round states
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open : Relayer creates round UTxO
+
+    Open --> Open : PlaceBet (before deadline)
+    Open --> Settled : Settle — close ≠ open, both sides have bets
+    Open --> Draw    : Settle — close == open
+    Open --> Void    : Settle — one side has no bets
+
+    Settled --> Settled : Claim (winner collects, added to claimed list)
+    Draw    --> Draw    : Refund (bettor recovers stake)
+    Void    --> Void    : Refund (bettor recovers stake)
+```
+
 ## Design assumptions
 
 The idea is straightforward, but a production-ready version should make these rules explicit:
@@ -27,36 +71,48 @@ The idea is straightforward, but a production-ready version should make these ru
 
 ## Current repository state
 
-At the moment, this repo contains a basic Aiken validator example rather than the finished betting application:
+This repo contains an initial prototype of the betting protocol alongside the original placeholder validator:
 
 ```text
 .github/
   workflows/
     continuous-integration.yml
 validators/
-  hello_world.ak
-lib/                    # empty — planned home for types.ak and utils.ak
-env/                    # empty
+  hello_world.ak          # original placeholder, kept for reference
+  round_validator.ak      # prototype betting logic: PlaceBet / Settle / Claim / Refund
+lib/
+  types.ak                # RoundDatum, RoundStatus, BetSide, Bet, Action
+  utils.ak                # pool math, winner determination, payout calculation
+env/                      # empty
 aiken.toml
-aiken.lock              # pins aiken-lang/stdlib v3.0.0 for reproducible builds
+aiken.lock                # pins aiken-lang/stdlib v3.0.0 for reproducible builds
 plutus.json
 .gitignore
 README.md
 ```
 
-That means this README should be read as a project direction and protocol outline, not as a description of a completed implementation.
+The prototype implements the core round mechanics. See **Design assumptions** for what a production version would need to harden.
 
-## Planned architecture
-
-The intended project structure for the full version would look something like this:
+## Architecture
 
 ```text
 validators/
-  round_validator.ak   # Core betting logic: bet, settle, claim
+  round_validator.ak   # Core betting logic: PlaceBet, Settle, Claim, Refund
 lib/
-  types.ak             # RoundDatum, RoundStatus, action types
-  utils.ak             # Price helpers, pool math, winner checks
+  types.ak             # RoundDatum, RoundStatus, BetSide, Bet, Action
+  utils.ak             # Pool math, winner determination, payout calculation
 ```
+
+### Validator actions
+
+| Action | Who | When | Effect |
+|--------|-----|------|--------|
+| `PlaceBet` | Any user | Before deadline | Appends bet to datum, locks ADA |
+| `Settle` | Relayer | After deadline | Records close price, sets status |
+| `Claim` | Winner | After settlement | Pays net payout, marks as claimed |
+| `Refund` | Any bettor | Draw or Void | Returns stake, marks as claimed |
+
+A round UTxO is **created** (not validated) when the relayer sends ADA to the script address with an initial `RoundDatum`. No minting policy is required for the prototype.
 
 ## Building
 
