@@ -1,10 +1,10 @@
 # 5minBets
 
-`5minBets` is a Cardano-native price prediction market written in [Aiken](https://aiken-lang.org). Users bet `UP` or `DOWN` on whether the **gold price in US dollars** (`XAU/USD`) will rise or fall over a fixed 5-minute window, using [Pyth Lazer](https://pyth.network) price data (feed ID `6`) to determine the outcome.
+`5minBets` is a Cardano-native price prediction market written in [Aiken](https://aiken-lang.org). Users bet `UP` or `DOWN` on whether the **gold price in US dollars** (`XAU/USD`) will rise or fall over a fixed 5-minute window, using [Pyth Lazer](https://pyth.network) price data (feed ID `6` — verify before deploying) to determine the outcome.
 
 ## Status
 
-This repository is currently an early prototype. The product idea and intended round mechanics are described below, but the on-chain implementation in this repo is still minimal and does not yet include the full betting protocol.
+The core betting protocol is implemented. `PlaceBet`, `Settle`, `Claim`, and `Refund` actions are fully validated on-chain. See **Design assumptions** for what a production deployment would need to harden further.
 
 ## Concept
 
@@ -39,7 +39,7 @@ sequenceDiagram
     Note over Contract: status → Settled(UP)
 
     User A->>Contract: Claim
-    Contract-->>User A: ~145.5 ADA (gross 150 − 2% fee)
+    Contract-->>User A: ~147 ADA (gross 150 − 3 ADA fee)
 
     Relayer->>Contract: CollectFee (future)
 ```
@@ -78,14 +78,15 @@ This repo contains an initial prototype of the betting protocol alongside the or
   workflows/
     continuous-integration.yml
 validators/
-  hello_world.ak          # original placeholder, kept for reference
-  round_validator.ak      # prototype betting logic: PlaceBet / Settle / Claim / Refund
+  hello_world.ak              # original placeholder, kept for reference
+  round_validator.ak          # betting logic: PlaceBet / Settle / Claim / Refund
+  round_validator_tests.ak    # validator tests (22 tests)
 lib/
-  types.ak                # RoundDatum, RoundStatus, BetSide, Bet, Action
-  utils.ak                # pool math, winner determination, payout calculation
-env/                      # empty
+  types.ak                    # RoundDatum, RoundStatus, BetSide, Bet, Action
+  utils.ak                    # pool math, winner determination, payout calculation + tests
+env/                          # empty
 aiken.toml
-aiken.lock                # pins aiken-lang/stdlib v3.0.0 for reproducible builds
+aiken.lock                    # pins aiken-lang/stdlib v3.0.0 for reproducible builds
 plutus.json
 .gitignore
 README.md
@@ -97,10 +98,11 @@ The prototype implements the core round mechanics. See **Design assumptions** fo
 
 ```text
 validators/
-  round_validator.ak   # Core betting logic: PlaceBet, Settle, Claim, Refund
+  round_validator.ak          # Core betting logic: PlaceBet, Settle, Claim, Refund
+  round_validator_tests.ak    # Validator tests (imports validate from round_validator)
 lib/
-  types.ak             # RoundDatum, RoundStatus, BetSide, Bet, Action
-  utils.ak             # Pool math, winner determination, payout calculation
+  types.ak                    # RoundDatum, RoundStatus, BetSide, Bet, Action
+  utils.ak                    # Pool math, winner determination, payout calculation
 ```
 
 ### Validator actions
@@ -153,5 +155,5 @@ A GitHub Actions workflow at `.github/workflows/continuous-integration.yml` runs
 ## Resources
 
 - [Aiken user manual](https://aiken-lang.org)
-- [Pyth Network on Cardano](https://docs.pyth.network/price-feeds/use-real-time-data/cardano)
+- [Pyth Lazer documentation](https://docs.pyth.network/lazer)
 - [Cardano developer docs](https://developers.cardano.org)
